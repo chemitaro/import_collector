@@ -9,8 +9,8 @@ PICVはPythonプログラムの依存関係を解析し、それらのファイ�
 usage: collect_imports [OPTIONS] <MODULE_PATH ...> [EXCLUDE_PATH, ...]
 
 positional arguments:
-  module_path           依存関係を解析する起点のPythonファイルのパス
-  exclude_path          除外するPythonファイルのパス
+  module_path           依存関係を解析する起点のPythonファイルのパス, 複数指定可能
+  exclude_path          除外するPythonファイルのパス, 複数指定可能
 
 options:
     -h, --help            ヘルプを表示

@@ -1,49 +1,83 @@
 #!/usr/bin/env python3
 
 """
-Python Import Collector and Viewer (PICV)
+Python Import Collector
 
-PICVはPythonプログラムの依存関係を解析し、それらのファイルの全コードを表示し、さらにクリップボードにコピーするツールです。
+Pythonプログラムの依存関係を解析し、それらのファイルの全コードを表示し、さらにクリップボードにコピーするツールです。
 また、オプションを付けることでドキュメントコメントを省略することも可能です。
 
 usage: collect_imports [OPTIONS] <MODULE_PATH ...> [EXCLUDE_PATH, ...]
 
 positional arguments:
   module_path           依存関係を解析する起点のPythonファイルのパス, 複数指定可能
-  exclude_path          除外するPythonファイルのパス, 複数指定可能
 
 options:
-    -h, --help            ヘルプを表示
-    -n, --no-comment      ドキュメントコメントを省略する
-    -d, --depth <number>   依存関係の解析を行う深さを指定する
-    -c, --chunk <number>   指定した文字数ごとに分割してクリップボードへコピーする
+    -h, --help                   ヘルプを表示
+    -d, --depth <number>         依存関係の解析を行う深さを指定する
+    -n, --no-comment             ドキュメントコメントを省略する
+    -c, --chunk <number>         クリップボードへコピーする際に指定した文字数で分割する
+    -e, --exclude [<path>, ...]  除外するファイルのパスを指定する, 複数指定可能
 """
 
 
 import os
 import sys
 import ast
+import importlib
+import argparse
 import pyperclip
 import re
 import tiktoken
+from typing import List, Optional, Tuple, Dict
 
 
 class ImportParser(ast.NodeVisitor):
+    """
+    Pythonコード内のimport文を解析するためのVisitorクラスです。
+
+    Attributes:
+        imports (List[Tuple[bool, str]]): インポートされたモジュールを表すタプルのリストです。
+            各タプルには、相対インポートか絶対インポートかを示すブール値と、インポートされたモジュールの名前を表す文字列が含まれます。
+            相対インポートの場合は、Trueが、絶対インポートの場合はFalseが含まれます。
+    """
     def __init__(self):
         self.imports = []
 
     def visit_Import(self, node):
+        """
+        Importノードを訪問し、インポートされたモジュールを抽出します。
+
+        Args:
+            node (ast.Import): 訪問するImportノード。
+        """
         for alias in node.names:
             self.imports.append((False, alias.name))
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node):
+        """
+        ImportFromノードを訪問し、インポートされたモジュールを抽出します。
+
+        Args:
+            node (ast.ImportFrom): 訪問するImportFromノード。
+        """
         self.imports.append((node.level > 0, node.module))
         self.generic_visit(node)
 
 
-def read_file(file, remove_comments):
-    with open(file, "r") as f:
+def read_file(path: str, remove_comments: bool = False) -> str:
+    """
+    指定されたファイルを読み込み、その内容を返します。
+
+    Args:
+        path (str): 読み込むファイルのパス。
+        remove_comments (bool): ドキュメントコメントを削除するかどうかを示すブール値。
+
+    Returns:
+        str: ファイルの内容。
+    """
+
+    with open(path, "r") as f:
         content = f.read()
         if remove_comments:
             content = remove_docstring(content)
@@ -51,6 +85,15 @@ def read_file(file, remove_comments):
 
 
 def remove_docstring(content):
+    """
+    指定されたPythonコードからドキュメントコメントを削除します。
+
+    Args:
+        content (str): ドキュメントコメントを削除するPythonコード。
+
+    Returns:
+        str: ドキュメントコメントが削除されたPythonコード。
+    """
     # ドキュメントコメントを削除する
     omit_content = re.sub(r'""".*?"""\n', '', content, flags=re.DOTALL)
     # '# 'から始めるコメントを削除する
@@ -58,41 +101,185 @@ def remove_docstring(content):
     return omit_content
 
 
-def parse_file(file):
-    with open(file, "r") as f:
-        tree = ast.parse(f.read())
+def convert_relative_import(file, module):
+    """
+    相対インポートを絶対インポートに変換します。
+
+    Args:
+        file (str): 相対インポートを含むPythonファイルのパス。
+        module (str): 相対インポートを含むモジュールの名前。
+
+    Returns:
+        str: 相対インポートが絶対インポートに変換されたモジュールの名前。
+    """
+    # モジュールの名前から階層を取得する
+    levels = module.count('.')
+    # ファイルのパスからディレクトリを取得する
+    directory = os.path.dirname(file)
+    # 階層の数だけディレクトリを上に上がる
+    for _ in range(levels):
+        directory = os.path.dirname(directory)
+    # ディレクトリと階層から絶対インポートに変換する
+    return '.'.join([directory] + [module])
+
+
+def extract_imports(code: str) -> List[str]:
+    # Parse the code into an AST
+    tree = ast.parse(code)
+
+    # Find all import nodes in the AST
+    imports = [node for node in ast.walk(tree) if isinstance(node, (ast.Import, ast.ImportFrom))]
+
+    # Extract the module names
+    module_names = [node.module for node in imports if node.module is not None]
+
+    return module_names
+
+
+def convert_to_absolute_paths(module_names: List[str]) -> List[str]:
+    paths = []
+    for module_name in module_names:
+        try:
+            # Import the module and get its path
+            module = importlib.import_module(module_name)
+            path = module.__file__
+        except ImportError:
+            path = f"Module {module_name} not found"
+        paths.append(path)
+
+    return paths
+
+
+def parse_import(path: str) -> List[str]:
+    """
+    指定されたPythonファイルを解析し、インポートされたモジュールを抽出します。
+
+    Args:
+        path (str): 解析するPythonファイルのパス。
+
+    Returns:
+        List[str]: インポートされたモジュールの絶対インポートのリスト。
+            ファイルに相対インポートが含まれている場合は、絶対インポートに変換されます。
+    """
+    code = read_file(path, False)
+    tree = ast.parse(code)
     parser = ImportParser()
     parser.visit(tree)
-    return parser.imports
+    parsed_results = parser.imports
+
+    # 相対インポートを絶対インポートに変換する
+    absolute_imports = []
+    for is_relative, module in parsed_results:
+        # 相対インポートの場合、絶対インポートに変換する
+        if is_relative:
+            module = convert_relative_import(path, module)
+
+        # 絶対インポートを相対パスに変換する
+        absolute_imports.append(module.replace('.', '/') + '.py')
+
+    return absolute_imports
 
 
 def find_file(files, file):
     return files.get(file)
 
 
-def get_all_py_files(dir):
+def get_all_py_paths(path):
+    """
+    指定されたディレクトリ以下にある全てのPythonファイルのパスを取得します。
+
+    Args:
+        path (str): Pythonファイルを検索するディレクトリのパス。
+
+    Returns:
+        Dict[str, str]: 相対パスをキー、絶対パスを値とするPythonファイルの辞書。
+    """
     python_files = {}
-    for root, _dirs, files in os.walk(dir):
+    for root, _dirs, files in os.walk(path):
         for file in files:
             if file.endswith('.py'):
                 absolute_path = os.path.join(root, file)
-                relative_path = os.path.relpath(absolute_path, dir)
+                relative_path = os.path.relpath(absolute_path, path)
                 python_files[relative_path.replace("\\", "/")] = absolute_path
     return python_files
 
 
-def main():
-    dir = os.getcwd()
+def exclude_paths(all_py_paths: Dict[str, str], excludes: List[str] = []) -> Dict[str, str]:
+    """
+    ルートディレクトリ以下の全pythonファイルの辞書から除外するファイルを除外する
+
+    Args:
+        all_py_paths (dir[str, str]): ルートディレクトリ以下の全pythonファイルの辞書(相対パスをキー、絶対パスを値とする)
+        excludes (List[str]): 除外するファイルの相対パスのリスト
+
+    Returns:
+        dir[str, str]: 除外後の全pythonファイルの辞書
+    """
+    for exclude in excludes:
+        # 除外するファイルの相対パスが辞書のキーに存在する場合、そのキーを削除する
+        if exclude in all_py_paths.keys():
+            del all_py_paths[exclude]
+    return all_py_paths
+
+
+# 起点となるファイルのパスから、依存関係を解析して、ファイルのパスを返す
+def search_dependencies(root_path: str, module_paths: List[str], search_candidate_paths: Dict[str, str], depth: int = sys.maxsize) -> Dict[str, str]:
+    search_paths: List[List[str]] = [module_paths]
+    searched_result_paths: Dict[str, str] = {}
+    current_depth: int = 0  # 探索中の階層の深さを0で初期化
+    # 指定された深さまで依存関係を解析する
+    for i in range(0, depth):
+        # 次に探索するファイルのパスを格納するリスト追加する
+        search_paths.append([])
+        # 現在の階層のファイルのパスを取得する
+        for path in search_paths[current_depth]:
+            # 現在の階層のファイルのパスが、探索済みのファイルのパスに含まれていない、かつ、探索候補のファイルのパスに含まれている場合
+            if path not in searched_result_paths.keys() and path in search_candidate_paths.keys():
+                # 現在の階層のファイルのパスを探索済みのファイルのパスに追加する
+                searched_result_paths[path] = search_candidate_paths[path]
+                # 現在の階層のファイルのパスから、依存関係を解析して、ファイルのパスを取得する
+                dependencies: List[str] = parse_import(path)
+                # 現在の階層のファイルのパスの依存関係を、次の階層のファイルのパスに追加する
+                search_paths[current_depth + 1].extend(dependencies)
+        current_depth += 1  # 次の階層に移動する
+        # 次の階層のファイルのパスが存在しない場合、探索を終了する
+        if len(search_paths[current_depth]) == 0:
+            break
+
+    return searched_result_paths
+
+
+def create_content(searched_result_paths: Dict[str, str] = {}, chunk_size: int = sys.maxsize, no_comment: bool = False) -> List[str]:
+    chunked_contents: List[str] = []
+    for relative_path, absolute_path in searched_result_paths.items():
+        content = read_file(absolute_path, no_comment)
+
+def main(root_path: str, module_paths: List[str] = [], depth: int = sys.maxsize, no_comment: bool = False, chunk_size: int = sys.maxsize,
+         excludes: List[str] = []):
     parsed_files = []
-    all_py_files = get_all_py_files(dir)
-    files_to_parse = [arg for arg in sys.argv[1:] if arg != '--no-comment']
-    clipboard_content = ""
-    remove_comments = '--no-comment' in sys.argv[1:]
+    # files_to_parse = module_paths
+    # remove_comments = no_comment
+
+    # clipboard_content = ""
+
+    # ルートディレクトリ以下の全Pythonファイルのパスを取得する
+    all_py_paths: Dict[str, str] = get_all_py_paths(root_path)
+
+    # 全ファイルのパスから除外するファイルのパスを除外する
+    search_candidate_paths: Dict[str, str] = exclude_paths(all_py_paths, excludes)
+
+    # 起点となるファイルのパスから、依存関係を解析して、ファイルのパスを取得する
+    searched_result_paths: Dict[str, str] = search_dependencies(root_path, module_paths, search_candidate_paths, depth)
+
+    # 依存関係を解析したファイルのパスから、ファイルの内容を取得する
+    chunked_content: List[str] = create_content(searched_result_paths, chunk_size, no_comment)
+
+    # 処理を中断する
+    sys.exit()
 
     while files_to_parse:
         file = files_to_parse.pop(0)
-        file = file if os.path.isabs(file) else os.path.join(dir, file)
-
+        file = file if os.path.isabs(file) else os.path.join(root_path, file)
         if file in parsed_files:
             continue
         parsed_files.append(file)
@@ -101,18 +288,18 @@ def main():
             continue
 
         file_content = read_file(file, remove_comments)
-        relative_path = os.path.relpath(file, dir)
-        clipboard_content += f'\n=== {relative_path} ===\n'
+        relative_path = os.path.relpath(file, root_path)
+        clipboard_content += f'\n```\n# {relative_path}\n'
         clipboard_content += file_content
-        clipboard_content += '\n=== end ===\n'
+        clipboard_content += '\n```\n'
 
-        imports = parse_file(file)
+        imports = parse_import(file)
         for is_relative, module in imports:
             module = module.replace(".", "/") + ".py"
             if is_relative:
                 module_file = os.path.join(os.path.dirname(file), module)
             else:
-                module_file = find_file(all_py_files, module)
+                module_file = find_file(search_candidate_paths, module)
             if module_file and module_file not in parsed_files:
                 files_to_parse.append(module_file)
 
@@ -125,4 +312,16 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # コマンドライン引数の解析
+    parser = argparse.ArgumentParser(description='Python Import Collector')
+    parser.add_argument('module_path', nargs='+', help='依存関係を解析する起点のPythonファイルのパス, 複数指定可能')
+    parser.add_argument('-d', '--depth', type=int, default=sys.maxsize, help='依存関係の解析を行う深さを指定する')
+    parser.add_argument('-n', '--no-comment', action='store_true', help='ドキュメントコメントを省略する')
+    parser.add_argument('-c', '--chunk_size', type=int, default=sys.maxsize, help='クリップボードへコピーする際に指定した文字数で分割する')
+    parser.add_argument('-e', '--exclude', nargs='*', default=[], help='除外するファイルのパスを指定する, 複数指定可能')
+    args = parser.parse_args()
+
+    root_dir = os.getcwd()
+
+    # メイン処理
+    main(root_dir, module_paths=args.module_path, depth=args.depth, no_comment=args.no_comment, chunk_size=args.chunk_size, excludes=args.exclude)

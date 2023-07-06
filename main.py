@@ -31,40 +31,6 @@ import tiktoken
 from typing import List, Optional, Tuple, Dict
 
 
-class ImportParser(ast.NodeVisitor):
-    """
-    Pythonコード内のimport文を解析するためのVisitorクラスです。
-
-    Attributes:
-        imports (List[Tuple[bool, str]]): インポートされたモジュールを表すタプルのリストです。
-            各タプルには、相対インポートか絶対インポートかを示すブール値と、インポートされたモジュールの名前を表す文字列が含まれます。
-            相対インポートの場合は、Trueが、絶対インポートの場合はFalseが含まれます。
-    """
-    def __init__(self):
-        self.imports = []
-
-    def visit_Import(self, node):
-        """
-        Importノードを訪問し、インポートされたモジュールを抽出します。
-
-        Args:
-            node (ast.Import): 訪問するImportノード。
-        """
-        for alias in node.names:
-            self.imports.append((False, alias.name))
-        self.generic_visit(node)
-
-    def visit_ImportFrom(self, node):
-        """
-        ImportFromノードを訪問し、インポートされたモジュールを抽出します。
-
-        Args:
-            node (ast.ImportFrom): 訪問するImportFromノード。
-        """
-        self.imports.append((node.level > 0, node.module))
-        self.generic_visit(node)
-
-
 def read_file(path: str, remove_comments: bool = False) -> str:
     """
     指定されたファイルを読み込み、その内容を返します。
@@ -123,61 +89,43 @@ def convert_relative_import(file, module):
     return '.'.join([directory] + [module])
 
 
-def extract_imports(code: str) -> List[str]:
-    # Parse the code into an AST
-    tree = ast.parse(code)
-
-    # Find all import nodes in the AST
-    imports = [node for node in ast.walk(tree) if isinstance(node, (ast.Import, ast.ImportFrom))]
-
-    # Extract the module names
-    module_names = [node.module for node in imports if node.module is not None]
-
-    return module_names
-
-
-def convert_to_absolute_paths(module_names: List[str]) -> List[str]:
-    paths = []
-    for module_name in module_names:
-        try:
-            # Import the module and get its path
-            module = importlib.import_module(module_name)
-            path = module.__file__
-        except ImportError:
-            path = f"Module {module_name} not found"
-        paths.append(path)
-
-    return paths
-
-
-def parse_import(path: str) -> List[str]:
+def extract_imports(root_path: str, relative_path: str) -> List[str]:
     """
-    指定されたPythonファイルを解析し、インポートされたモジュールを抽出します。
+    指定されたPythonファイルのインポートを解析し、インポートされたモジュールのファイルの相対パスのリストを返します。
 
     Args:
-        path (str): 解析するPythonファイルのパス。
+        root_path (str): 依存関係を解析する起点のPythonファイルのパス。
+        relative_path (str): 依存関係を解析するPythonファイルのパス。
 
     Returns:
-        List[str]: インポートされたモジュールの絶対インポートのリスト。
-            ファイルに相対インポートが含まれている場合は、絶対インポートに変換されます。
+        List[str]: インポートされたモジュールのファイルの相対パスのリスト。
     """
-    code = read_file(path, False)
+    # ファイルの内容を読み込む
+    code = read_file(relative_path, remove_comments=False)
+    absolute_path = os.path.join(root_path, relative_path)
+    # コードをASTで解析する
     tree = ast.parse(code)
-    parser = ImportParser()
-    parser.visit(tree)
-    parsed_results = parser.imports
 
-    # 相対インポートを絶対インポートに変換する
-    absolute_imports = []
-    for is_relative, module in parsed_results:
-        # 相対インポートの場合、絶対インポートに変換する
-        if is_relative:
-            module = convert_relative_import(path, module)
+    # AST内のすべてのインポートノードを検索する
+    imports = [node for node in ast.walk(tree) if isinstance(node, (ast.Import, ast.ImportFrom))]
 
-        # 絶対インポートを相対パスに変換する
-        absolute_imports.append(module.replace('.', '/') + '.py')
-
-    return absolute_imports
+    # モジュールのインポートをファイルパスに変換する
+    absolute_paths = []
+    for node in imports:
+        module_name = node.module
+        if isinstance(node, ast.ImportFrom) and node.level > 0:
+            # Relative import
+            base_dir = os.path.dirname(absolute_path)
+            for _ in range(node.level - 1):
+                base_dir = os.path.dirname(base_dir)
+            module_file_path = os.path.join(base_dir, module_name.replace(".", "/")) + ".py"
+        elif module_name is not None:
+            # Absolute import
+            module_file_path = os.path.join(root_dir, module_name.replace(".", "/")) + ".py"
+        absolute_paths.append(module_file_path)
+    # 絶対パスを相対パスに変換する
+    relative_paths = [os.path.relpath(absolute_path, root_path) for absolute_path in absolute_paths]
+    return relative_paths
 
 
 def find_file(files, file):
@@ -237,8 +185,8 @@ def search_dependencies(root_path: str, module_paths: List[str], search_candidat
             if path not in searched_result_paths.keys() and path in search_candidate_paths.keys():
                 # 現在の階層のファイルのパスを探索済みのファイルのパスに追加する
                 searched_result_paths[path] = search_candidate_paths[path]
-                # 現在の階層のファイルのパスから、依存関係を解析して、ファイルのパスを取得する
-                dependencies: List[str] = parse_import(path)
+                # 現在の階層のファイルのパスから、依存関係を解析して、ファイルのパスを取得する。この時、絶対パスに変換する
+                dependencies: List[str] = extract_imports(root_path, path)
                 # 現在の階層のファイルのパスの依存関係を、次の階層のファイルのパスに追加する
                 search_paths[current_depth + 1].extend(dependencies)
         current_depth += 1  # 次の階層に移動する
@@ -270,7 +218,7 @@ def main(root_path: str, module_paths: List[str] = [], depth: int = sys.maxsize,
 
     # 起点となるファイルのパスから、依存関係を解析して、ファイルのパスを取得する
     searched_result_paths: Dict[str, str] = search_dependencies(root_path, module_paths, search_candidate_paths, depth)
-
+    import pdb; pdb.set_trace()
     # 依存関係を解析したファイルのパスから、ファイルの内容を取得する
     chunked_content: List[str] = create_content(searched_result_paths, chunk_size, no_comment)
 

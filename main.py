@@ -1,34 +1,13 @@
 #!/usr/bin/env python3
 
-"""
-Python Import Collector
-
-Pythonプログラムの依存関係を解析し、それらのファイルの全コードを表示し、さらにクリップボードにコピーするツールです。
-また、オプションを付けることでドキュメントコメントを省略することも可能です。
-
-usage: collect_imports [OPTIONS] <MODULE_PATH ...> [EXCLUDE_PATH, ...]
-
-positional arguments:
-  module_path           依存関係を解析する起点のPythonファイルのパス, 複数指定可能
-
-options:
-    -h, --help                   ヘルプを表示
-    -d, --depth <number>         依存関係の解析を行う深さを指定する
-    -n, --no-comment             ドキュメントコメントを省略する
-    -c, --chunk <number>         クリップボードへコピーする際に指定した文字数で分割する
-    -e, --exclude [<path>, ...]  除外するファイルのパスを指定する, 複数指定可能
-"""
-
-
 import os
 import sys
 import ast
-import importlib
 import argparse
 import pyperclip
 import re
 import tiktoken
-from typing import List, Optional, Tuple, Dict
+from typing import List, Dict
 
 
 def read_file(path: str, remove_comments: bool = False) -> str:
@@ -112,7 +91,12 @@ def extract_imports(root_path: str, relative_path: str) -> List[str]:
     # モジュールのインポートをファイルパスに変換する
     absolute_paths = []
     for node in imports:
-        module_name = node.module
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                module_name = alias.name
+        elif isinstance(node, ast.ImportFrom):
+            module_name = node.module
+
         if isinstance(node, ast.ImportFrom) and node.level > 0:
             # Relative import
             base_dir = os.path.dirname(absolute_path)
@@ -198,13 +182,31 @@ def search_dependencies(root_path: str, module_paths: List[str], search_candidat
 
 
 def create_content(searched_result_paths: Dict[str, str] = {}, chunk_size: int = sys.maxsize, no_comment: bool = False) -> List[str]:
-    chunked_contents: List[str] = []
-    for relative_path, absolute_path in searched_result_paths.items():
-        content = read_file(absolute_path, no_comment)
+    """指定されたファイルのパスのファイルの内容を取得する
+
+    Args:
+        searched_result_paths (Dict[str, str], optional): 指定されたファイルのパスのファイルの内容を取得する. Defaults to {}.
+        chunk_size (int, optional): ファイルの内容を取得する際のチャンクサイズ. Defaults to sys.maxsize.
+        no_comment (bool, optional): コメントを除去するかどうか. Defaults to False.
+
+    Returns:
+        List[str]: 指定されたファイルのパスのファイルの内容のリスト
+    """
+
+    chunked_contents: List[str] = ['python_files\n']
+    for relative_path in searched_result_paths.keys():
+        code = read_file(relative_path, no_comment)
+        content = f'\n```\n# {relative_path}\n{code}\n```\n'
+        if len(chunked_contents[-1] + content) > chunk_size:
+            chunked_contents.append(content)
+        else:
+            chunked_contents[-1] += content
+    return chunked_contents
+
 
 def main(root_path: str, module_paths: List[str] = [], depth: int = sys.maxsize, no_comment: bool = False, chunk_size: int = sys.maxsize,
          excludes: List[str] = []):
-    parsed_files = []
+    # parsed_files = []
     # files_to_parse = module_paths
     # remove_comments = no_comment
 
@@ -218,55 +220,43 @@ def main(root_path: str, module_paths: List[str] = [], depth: int = sys.maxsize,
 
     # 起点となるファイルのパスから、依存関係を解析して、ファイルのパスを取得する
     searched_result_paths: Dict[str, str] = search_dependencies(root_path, module_paths, search_candidate_paths, depth)
-    import pdb; pdb.set_trace()
     # 依存関係を解析したファイルのパスから、ファイルの内容を取得する
     chunked_content: List[str] = create_content(searched_result_paths, chunk_size, no_comment)
+    joined_content: str = ''.join(chunked_content)
 
-    # 処理を中断する
-    sys.exit()
-
-    while files_to_parse:
-        file = files_to_parse.pop(0)
-        file = file if os.path.isabs(file) else os.path.join(root_path, file)
-        if file in parsed_files:
-            continue
-        parsed_files.append(file)
-
-        if not os.path.isfile(file):
-            continue
-
-        file_content = read_file(file, remove_comments)
-        relative_path = os.path.relpath(file, root_path)
-        clipboard_content += f'\n```\n# {relative_path}\n'
-        clipboard_content += file_content
-        clipboard_content += '\n```\n'
-
-        imports = parse_import(file)
-        for is_relative, module in imports:
-            module = module.replace(".", "/") + ".py"
-            if is_relative:
-                module_file = os.path.join(os.path.dirname(file), module)
-            else:
-                module_file = find_file(search_candidate_paths, module)
-            if module_file and module_file not in parsed_files:
-                files_to_parse.append(module_file)
-
-    print(clipboard_content)
-    pyperclip.copy(clipboard_content)
-    print(f'\n{len(clipboard_content)} characters copied to clipboard.')
+    # 取得したコードと文字数やトークン数、chunkの数を表示する
+    print(joined_content)
+    print(f'\n{len(joined_content)} characters.')
     encoding = tiktoken.encoding_for_model("gpt-4")
-    encoding.encode(clipboard_content)
-    print(f'\n{len(encoding.encode(clipboard_content))} tokens encoded for gpt-4.')
+    print(f'\n{len(encoding.encode(joined_content))} tokens encoded for gpt-4.')
+    if chunk_size < sys.maxsize:
+        print(f'\n{len(chunked_content)} chunks of size {chunk_size}.')
+
+    # chunked_content を順番にクリップボードにコピーする
+    for content in chunked_content:
+        pyperclip.copy(content)
+        # chunkのナンバーを表示する
+        print(f'\nChunk {chunked_content.index(content) + 1} of {len(chunked_content)} copied to clipboard.')
+        # chunkが最後のchunkでない場合、Enterキーを押すまで待機する
+        if chunked_content.index(content) + 1 < len(chunked_content):
+            input('\nPress Enter to continue...')
 
 
 if __name__ == "__main__":
     # コマンドライン引数の解析
-    parser = argparse.ArgumentParser(description='Python Import Collector')
-    parser.add_argument('module_path', nargs='+', help='依存関係を解析する起点のPythonファイルのパス, 複数指定可能')
-    parser.add_argument('-d', '--depth', type=int, default=sys.maxsize, help='依存関係の解析を行う深さを指定する')
-    parser.add_argument('-n', '--no-comment', action='store_true', help='ドキュメントコメントを省略する')
-    parser.add_argument('-c', '--chunk_size', type=int, default=sys.maxsize, help='クリップボードへコピーする際に指定した文字数で分割する')
-    parser.add_argument('-e', '--exclude', nargs='*', default=[], help='除外するファイルのパスを指定する, 複数指定可能')
+    parser = argparse.ArgumentParser(
+        description="""
+        This tool analyzes the dependencies of Python programs, displays all the code in those files, and also copies them to the clipboard.
+        It is also possible to omit document comments by adding options.
+        Assuming a character limit, you can also split the copy to the clipboard by a specified number of characters.
+        """
+    )
+    parser.add_argument('module_path', nargs='+', help='Path of the Python file from which to parse dependencies, multiple paths can be specified')
+    parser.add_argument('-d', '--depth', type=int, default=sys.maxsize, help='Specify depth of dependency analysis')
+    parser.add_argument('-n', '--no-comment', action='store_true', help='Omit document comments')
+    parser.add_argument('-c', '--chunk_size', type=int, default=sys.maxsize,
+                        help='Split by a specified number of characters when copying to the clipboard')
+    parser.add_argument('-e', '--exclude', nargs='*', default=[], help='Specify paths of files to exclude, multiple files can be specified')
     args = parser.parse_args()
 
     root_dir = os.getcwd()

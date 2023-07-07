@@ -227,11 +227,11 @@ def create_content(searched_result_paths: List[str] = [], chunk_size: int = sys.
         List[str]: 指定されたファイルのパスのファイルの内容のリスト
     """
 
-    chunked_contents: List[str] = ['python_files\n']
+    chunked_contents: List[str] = []
     for relative_path in searched_result_paths:
         code = read_file(relative_path, no_comment)
         content = f'\n```\n# {relative_path}\n{code}\n```\n'
-        if len(chunked_contents[-1] + content) > chunk_size:
+        if len(chunked_contents) == 0 or len(chunked_contents[-1] + content) > chunk_size:
             if len(content) > chunk_size:
                 # チャンクサイズを超えた場合、チャンクサイズに収まるように分割する
                 chunked_code: List[str] = code_split(content, chunk_size)

@@ -181,6 +181,40 @@ def search_dependencies(root_path: str, module_paths: List[str], search_candidat
     return searched_result_paths
 
 
+def code_split(code: str, chunk_size: int = sys.maxsize) -> List[str]:
+    """
+    文字列がチャンクサイズより大きい場合、チャンクサイズに分割する。
+
+    この時、なるべく改行の位置で分割する。
+
+    Args:
+        string (str): 分割する文字列
+        chunk_size (int, optional): チャンクサイズ. Defaults to sys.maxsize.
+
+    Returns:
+        List[str]: 分割後の文字列のリスト
+    """
+
+    # チャンクサイズより文章が小さい場合、そのまま返す
+    if len(code) <= chunk_size:
+        return [code]
+
+    chunked_code: List[str] = ['']
+    split_last_message = '\n# The code was broken in the middle.\n```'
+
+    # 文字列を改行で分割する
+    splited_rows: List[str] = code.split('\n')
+    # 改行で分割した文字列をチャンクサイズより小さくなるように結合する
+    for splited_row in splited_rows:
+        if len(chunked_code[-1] + splited_row + split_last_message) <= chunk_size:
+            chunked_code[-1] += f'\n{splited_row}'
+        else:
+            chunked_code[-1] += split_last_message
+            chunked_code.append(f'\n```\n# The cord continued.\n{splited_row}')
+
+    return chunked_code
+
+
 def create_content(searched_result_paths: List[str] = [], chunk_size: int = sys.maxsize, no_comment: bool = False) -> List[str]:
     """指定されたファイルのパスのファイルの内容を取得する
 
@@ -198,8 +232,15 @@ def create_content(searched_result_paths: List[str] = [], chunk_size: int = sys.
         code = read_file(relative_path, no_comment)
         content = f'\n```\n# {relative_path}\n{code}\n```\n'
         if len(chunked_contents[-1] + content) > chunk_size:
-            chunked_contents.append(content)
+            if len(content) > chunk_size:
+                # チャンクサイズを超えた場合、チャンクサイズに収まるように分割する
+                chunked_code: List[str] = code_split(content, chunk_size)
+                chunked_contents.extend(chunked_code)
+            else:
+                # チャンクサイズを超えた場合、新しいチャンクを作成する
+                chunked_contents.append(content)
         else:
+            # チャンクサイズを超えない場合、現在のチャンクに追加する
             chunked_contents[-1] += content
     return chunked_contents
 

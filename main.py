@@ -155,9 +155,9 @@ def exclude_paths(all_py_paths: Dict[str, str], excludes: List[str] = []) -> Dic
 
 
 # 起点となるファイルのパスから、依存関係を解析して、ファイルのパスを返す
-def search_dependencies(root_path: str, module_paths: List[str], search_candidate_paths: Dict[str, str], depth: int = sys.maxsize) -> Dict[str, str]:
+def search_dependencies(root_path: str, module_paths: List[str], search_candidate_paths: List[str], depth: int = sys.maxsize) -> List[str]:
     search_paths: List[List[str]] = [module_paths]
-    searched_result_paths: Dict[str, str] = {}
+    searched_result_paths: List[str] = []
     current_depth: int = 0  # 探索中の階層の深さを0で初期化
     # 指定された深さまで依存関係を解析する
     for i in range(0, depth):
@@ -166,9 +166,9 @@ def search_dependencies(root_path: str, module_paths: List[str], search_candidat
         # 現在の階層のファイルのパスを取得する
         for path in search_paths[current_depth]:
             # 現在の階層のファイルのパスが、探索済みのファイルのパスに含まれていない、かつ、探索候補のファイルのパスに含まれている場合
-            if path not in searched_result_paths.keys() and path in search_candidate_paths.keys():
+            if path not in searched_result_paths and path in search_candidate_paths:
                 # 現在の階層のファイルのパスを探索済みのファイルのパスに追加する
-                searched_result_paths[path] = search_candidate_paths[path]
+                searched_result_paths.append(path)
                 # 現在の階層のファイルのパスから、依存関係を解析して、ファイルのパスを取得する。この時、絶対パスに変換する
                 dependencies: List[str] = extract_imports(root_path, path)
                 # 現在の階層のファイルのパスの依存関係を、次の階層のファイルのパスに追加する
@@ -181,7 +181,7 @@ def search_dependencies(root_path: str, module_paths: List[str], search_candidat
     return searched_result_paths
 
 
-def create_content(searched_result_paths: Dict[str, str] = {}, chunk_size: int = sys.maxsize, no_comment: bool = False) -> List[str]:
+def create_content(searched_result_paths: List[str] = [], chunk_size: int = sys.maxsize, no_comment: bool = False) -> List[str]:
     """指定されたファイルのパスのファイルの内容を取得する
 
     Args:
@@ -194,7 +194,7 @@ def create_content(searched_result_paths: Dict[str, str] = {}, chunk_size: int =
     """
 
     chunked_contents: List[str] = ['python_files\n']
-    for relative_path in searched_result_paths.keys():
+    for relative_path in searched_result_paths:
         code = read_file(relative_path, no_comment)
         content = f'\n```\n# {relative_path}\n{code}\n```\n'
         if len(chunked_contents[-1] + content) > chunk_size:
@@ -242,7 +242,8 @@ def main(root_path: str, module_paths: List[str] = [], depth: int = sys.maxsize,
     search_candidate_paths: Dict[str, str] = exclude_paths(all_py_paths, excludes)
 
     # 起点となるファイルのパスから、依存関係を解析して、ファイルのパスを取得する
-    searched_result_paths: Dict[str, str] = search_dependencies(root_path, module_paths, search_candidate_paths, depth)
+    search_candidate_paths_list: List[str] = list(search_candidate_paths.keys())
+    searched_result_paths: List[str] = search_dependencies(root_path, module_paths, search_candidate_paths_list, depth)
 
     # 依存関係を解析したファイルのパスから、ファイルの内容を取得する
     chunked_content: List[str] = create_content(searched_result_paths, chunk_size, no_comment)

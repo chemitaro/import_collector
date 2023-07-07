@@ -167,8 +167,8 @@ def search_dependencies(root_path: str, module_paths: List[str], search_candidat
         for path in search_paths[current_depth]:
             # 現在の階層のファイルのパスが、探索済みのファイルのパスに含まれていない、かつ、探索候補のファイルのパスに含まれている場合
             if path not in searched_result_paths and path in search_candidate_paths:
-                # 現在の階層のファイルのパスを探索済みのファイルのパスに追加する
-                searched_result_paths.append(path)
+                # 現在の階層のファイルのパスを探索済みのパスの先頭に追加する
+                searched_result_paths.insert(0, path)
                 # 現在の階層のファイルのパスから、依存関係を解析して、ファイルのパスを取得する。この時、絶対パスに変換する
                 dependencies: List[str] = extract_imports(root_path, path)
                 # 現在の階層のファイルのパスの依存関係を、次の階層のファイルのパスに追加する

@@ -204,14 +204,37 @@ def create_content(searched_result_paths: Dict[str, str] = {}, chunk_size: int =
     return chunked_contents
 
 
+# 受け取ったテキストのトークン数を返す
+def count_tokens(text: str, model: str = 'gpt-4') -> int:
+    """
+    受け取ったテキストのトークン数を返す
+
+    Args:
+        text (str): 受け取ったテキスト
+        model (str, optional): トークナイザーのモデル名. Defaults to 'gpt-4'.
+
+    Returns:
+        int: 受け取ったテキストのトークン数
+    """
+    encoding = tiktoken.encoding_for_model(model)
+    return len(encoding.encode(text))
+
+
 def main(root_path: str, module_paths: List[str] = [], depth: int = sys.maxsize, no_comment: bool = False, chunk_size: int = sys.maxsize,
          excludes: List[str] = []):
-    # parsed_files = []
-    # files_to_parse = module_paths
-    # remove_comments = no_comment
+    """指定されたファイルのパスのファイルの内容を取得する
 
-    # clipboard_content = ""
+    Args:
+        root_path (str): 起点となるファイルのパス
+        module_paths (List[str], optional): 起点となるファイルのパスからの相対パスのリスト. Defaults to [].
+        depth (int, optional): 起点となるファイルのパスからの相対パスのリスト. Defaults to sys.maxsize.
+        no_comment (bool, optional): コメントを除去するかどうか. Defaults to False.
+        chunk_size (int, optional): ファイルの内容を取得する際のチャンクサイズ. Defaults to sys.maxsize.
+        excludes (List[str], optional): 除外するファイルのパスのリスト. Defaults to [].
 
+    Returns:
+        List[str]: 指定されたファイルのパスのファイルの内容のリスト
+    """
     # ルートディレクトリ以下の全Pythonファイルのパスを取得する
     all_py_paths: Dict[str, str] = get_all_py_paths(root_path)
 
@@ -220,26 +243,10 @@ def main(root_path: str, module_paths: List[str] = [], depth: int = sys.maxsize,
 
     # 起点となるファイルのパスから、依存関係を解析して、ファイルのパスを取得する
     searched_result_paths: Dict[str, str] = search_dependencies(root_path, module_paths, search_candidate_paths, depth)
+
     # 依存関係を解析したファイルのパスから、ファイルの内容を取得する
     chunked_content: List[str] = create_content(searched_result_paths, chunk_size, no_comment)
-    joined_content: str = ''.join(chunked_content)
-
-    # 取得したコードと文字数やトークン数、chunkの数を表示する
-    print(joined_content)
-    print(f'\n{len(joined_content)} characters.')
-    encoding = tiktoken.encoding_for_model("gpt-4")
-    print(f'\n{len(encoding.encode(joined_content))} tokens encoded for gpt-4.')
-    if chunk_size < sys.maxsize:
-        print(f'\n{len(chunked_content)} chunks of size {chunk_size}.')
-
-    # chunked_content を順番にクリップボードにコピーする
-    for content in chunked_content:
-        pyperclip.copy(content)
-        # chunkのナンバーを表示する
-        print(f'\nChunk {chunked_content.index(content) + 1} of {len(chunked_content)} copied to clipboard.')
-        # chunkが最後のchunkでない場合、Enterキーを押すまで待機する
-        if chunked_content.index(content) + 1 < len(chunked_content):
-            input('\nPress Enter to continue...')
+    return chunked_content
 
 
 if __name__ == "__main__":
@@ -262,4 +269,23 @@ if __name__ == "__main__":
     root_dir = os.getcwd()
 
     # メイン処理
-    main(root_dir, module_paths=args.module_path, depth=args.depth, no_comment=args.no_comment, chunk_size=args.chunk_size, excludes=args.exclude)
+    chunked_content = main(root_dir, module_paths=args.module_path, depth=args.depth, no_comment=args.no_comment, chunk_size=args.chunk_size,
+                           excludes=args.exclude)
+
+    # 取得したコードと文字数やトークン数、chunkの数を表示する
+    joined_content: str = ''.join(chunked_content)
+    print(joined_content)
+    print(f'\n{len(joined_content)} characters.')
+    encoding = tiktoken.encoding_for_model("gpt-4")
+    print(f'\n{len(encoding.encode(joined_content))} tokens encoded for gpt-4.')
+    if args.chunk_size < sys.maxsize:
+        print(f'\n{len(chunked_content)} chunks of size {args.chunk_size}.')
+
+    # chunked_content を順番にクリップボードにコピーする
+    for content in chunked_content:
+        pyperclip.copy(content)
+        # chunkのナンバーを表示する
+        print(f'\nChunk {chunked_content.index(content) + 1} of {len(chunked_content)} copied to clipboard.')
+        # chunkが最後のchunkでない場合、Enterキーを押すまで待機する
+        if chunked_content.index(content) + 1 < len(chunked_content):
+            input('\nPress Enter to continue...')

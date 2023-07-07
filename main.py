@@ -136,21 +136,21 @@ def get_all_py_paths(path):
     return python_files
 
 
-def exclude_paths(all_py_paths: Dict[str, str], excludes: List[str] = []) -> Dict[str, str]:
+def exclude_paths(all_py_paths: List[str], excludes: List[str] = []) -> List[str]:
     """
     ルートディレクトリ以下の全pythonファイルの辞書から除外するファイルを除外する
 
     Args:
-        all_py_paths (dir[str, str]): ルートディレクトリ以下の全pythonファイルの辞書(相対パスをキー、絶対パスを値とする)
+        all_py_paths (List[str]): ルートディレクトリ以下の全pythonファイルの辞書(相対パスをキー、絶対パスを値とする)
         excludes (List[str]): 除外するファイルの相対パスのリスト
 
     Returns:
-        dir[str, str]: 除外後の全pythonファイルの辞書
+        List[str]: 除外後の全pythonファイルの辞書
     """
     for exclude in excludes:
-        # 除外するファイルの相対パスが辞書のキーに存在する場合、そのキーを削除する
-        if exclude in all_py_paths.keys():
-            del all_py_paths[exclude]
+        # 除外するファイルの相対パスが存在する場合、その要素を削除する
+        if exclude in all_py_paths:
+            all_py_paths.remove(exclude)
     return all_py_paths
 
 

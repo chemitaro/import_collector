@@ -276,8 +276,7 @@ if __name__ == "__main__":
     joined_content: str = ''.join(chunked_content)
     print(joined_content)
     print(f'\n{len(joined_content)} characters.')
-    encoding = tiktoken.encoding_for_model("gpt-4")
-    print(f'\n{len(encoding.encode(joined_content))} tokens encoded for gpt-4.')
+    print(f'\n{count_tokens(joined_content)} tokens encoded for gpt-4.')
     if args.chunk_size < sys.maxsize:
         print(f'\n{len(chunked_content)} chunks of size {args.chunk_size}.')
 

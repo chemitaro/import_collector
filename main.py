@@ -277,14 +277,16 @@ if __name__ == "__main__":
     print(joined_content)
     print(f'\n{len(joined_content)} characters.')
     print(f'\n{count_tokens(joined_content)} tokens encoded for gpt-4.')
-    if args.chunk_size < sys.maxsize:
-        print(f'\n{len(chunked_content)} chunks of size {args.chunk_size}.')
+    if len(chunked_content) > 1:
+        print(f'\n{len(chunked_content)} chunks of {args.chunk_size} characters.')
 
     # chunked_content を順番にクリップボードにコピーする
     for content in chunked_content:
         pyperclip.copy(content)
         # chunkのナンバーを表示する
         print(f'\nChunk {chunked_content.index(content) + 1} of {len(chunked_content)} copied to clipboard.')
+        # 文字数とトークン数を表示する
+        print(f'({len(content)} chara, {count_tokens(content)} tokens)')
         # chunkが最後のchunkでない場合、Enterキーを押すまで待機する
         if chunked_content.index(content) + 1 < len(chunked_content):
             input('\nPress Enter to continue...')

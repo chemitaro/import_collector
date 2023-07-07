@@ -239,11 +239,10 @@ def main(root_path: str, module_paths: List[str] = [], depth: int = sys.maxsize,
     all_py_paths: Dict[str, str] = get_all_py_paths(root_path)
 
     # 全ファイルのパスから除外するファイルのパスを除外する
-    search_candidate_paths: Dict[str, str] = exclude_paths(all_py_paths, excludes)
+    search_candidate_paths: List[str] = exclude_paths(all_py_paths, excludes)
 
     # 起点となるファイルのパスから、依存関係を解析して、ファイルのパスを取得する
-    search_candidate_paths_list: List[str] = list(search_candidate_paths.keys())
-    searched_result_paths: List[str] = search_dependencies(root_path, module_paths, search_candidate_paths_list, depth)
+    searched_result_paths: List[str] = search_dependencies(root_path, module_paths, search_candidate_paths, depth)
 
     # 依存関係を解析したファイルのパスから、ファイルの内容を取得する
     chunked_content: List[str] = create_content(searched_result_paths, chunk_size, no_comment)

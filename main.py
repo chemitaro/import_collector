@@ -7,7 +7,7 @@ import argparse
 import pyperclip
 import re
 import tiktoken
-from typing import List, Dict
+from typing import List
 
 
 def read_file(path: str, remove_comments: bool = False) -> str:
@@ -116,7 +116,7 @@ def find_file(files, file):
     return files.get(file)
 
 
-def get_all_py_paths(path):
+def get_all_py_paths(path) -> List[str]:
     """
     指定されたディレクトリ以下にある全てのPythonファイルのパスを取得します。
 
@@ -124,16 +124,16 @@ def get_all_py_paths(path):
         path (str): Pythonファイルを検索するディレクトリのパス。
 
     Returns:
-        Dict[str, str]: 相対パスをキー、絶対パスを値とするPythonファイルの辞書。
+        List[str]: 相対パスのリスト。
     """
-    python_files = {}
+    all_py_paths: List[str] = []
     for root, _dirs, files in os.walk(path):
         for file in files:
             if file.endswith('.py'):
                 absolute_path = os.path.join(root, file)
                 relative_path = os.path.relpath(absolute_path, path)
-                python_files[relative_path.replace("\\", "/")] = absolute_path
-    return python_files
+                all_py_paths.append(relative_path)
+    return all_py_paths
 
 
 def exclude_paths(all_py_paths: List[str], excludes: List[str] = []) -> List[str]:
@@ -141,7 +141,7 @@ def exclude_paths(all_py_paths: List[str], excludes: List[str] = []) -> List[str
     ルートディレクトリ以下の全pythonファイルの辞書から除外するファイルを除外する
 
     Args:
-        all_py_paths (List[str]): ルートディレクトリ以下の全pythonファイルの辞書(相対パスをキー、絶対パスを値とする)
+        all_py_paths (List[str]): ルートディレクトリ以下の全pythonファイルの辞書
         excludes (List[str]): 除外するファイルの相対パスのリスト
 
     Returns:
@@ -185,7 +185,7 @@ def create_content(searched_result_paths: List[str] = [], chunk_size: int = sys.
     """指定されたファイルのパスのファイルの内容を取得する
 
     Args:
-        searched_result_paths (Dict[str, str], optional): 指定されたファイルのパスのファイルの内容を取得する. Defaults to {}.
+        searched_result_paths (List[str], optional): 指定されたファイルのパスのリスト. Defaults to [].
         chunk_size (int, optional): ファイルの内容を取得する際のチャンクサイズ. Defaults to sys.maxsize.
         no_comment (bool, optional): コメントを除去するかどうか. Defaults to False.
 
@@ -236,7 +236,7 @@ def main(root_path: str, module_paths: List[str] = [], depth: int = sys.maxsize,
         List[str]: 指定されたファイルのパスのファイルの内容のリスト
     """
     # ルートディレクトリ以下の全Pythonファイルのパスを取得する
-    all_py_paths: Dict[str, str] = get_all_py_paths(root_path)
+    all_py_paths: List[str] = get_all_py_paths(root_path)
 
     # 全ファイルのパスから除外するファイルのパスを除外する
     search_candidate_paths: List[str] = exclude_paths(all_py_paths, excludes)

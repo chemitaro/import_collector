@@ -181,7 +181,7 @@ def search_dependencies(root_path: str, module_paths: List[str], search_candidat
     return searched_result_paths
 
 
-def code_split(code: str, chunk_size: int = sys.maxsize) -> List[str]:
+def code_split(code: str, max_chara: int = sys.maxsize) -> List[str]:
     """
     文字列がチャンクサイズより大きい場合、チャンクサイズに分割する。
 
@@ -189,14 +189,14 @@ def code_split(code: str, chunk_size: int = sys.maxsize) -> List[str]:
 
     Args:
         string (str): 分割する文字列
-        chunk_size (int, optional): チャンクサイズ. Defaults to sys.maxsize.
+        max_chara (int, optional): チャンクサイズ. Defaults to sys.maxsize.
 
     Returns:
         List[str]: 分割後の文字列のリスト
     """
 
     # チャンクサイズより文章が小さい場合、そのまま返す
-    if len(code) <= chunk_size:
+    if len(code) <= max_chara:
         return [code]
 
     chunked_code: List[str] = ['']
@@ -206,7 +206,7 @@ def code_split(code: str, chunk_size: int = sys.maxsize) -> List[str]:
     splited_rows: List[str] = code.split('\n')
     # 改行で分割した文字列をチャンクサイズより小さくなるように結合する
     for splited_row in splited_rows:
-        if len(chunked_code[-1] + splited_row + split_last_message) <= chunk_size:
+        if len(chunked_code[-1] + splited_row + split_last_message) <= max_chara:
             chunked_code[-1] += f'\n{splited_row}'
         else:
             chunked_code[-1] += split_last_message
@@ -215,12 +215,12 @@ def code_split(code: str, chunk_size: int = sys.maxsize) -> List[str]:
     return chunked_code
 
 
-def create_content(searched_result_paths: List[str] = [], chunk_size: int = sys.maxsize, no_comment: bool = False) -> List[str]:
+def create_content(searched_result_paths: List[str] = [], max_chara: int = sys.maxsize, no_comment: bool = False) -> List[str]:
     """指定されたファイルのパスのファイルの内容を取得する
 
     Args:
         searched_result_paths (List[str], optional): 指定されたファイルのパスのリスト. Defaults to [].
-        chunk_size (int, optional): ファイルの内容を取得する際のチャンクサイズ. Defaults to sys.maxsize.
+        max_chara (int, optional): ファイルの内容を取得する際のチャンクサイズ. Defaults to sys.maxsize.
         no_comment (bool, optional): コメントを除去するかどうか. Defaults to False.
 
     Returns:
@@ -231,10 +231,10 @@ def create_content(searched_result_paths: List[str] = [], chunk_size: int = sys.
     for relative_path in searched_result_paths:
         code = read_file(relative_path, no_comment)
         content = f'\n```\n# {relative_path}\n{code}\n```\n'
-        if len(chunked_contents) == 0 or len(chunked_contents[-1] + content) > chunk_size:
-            if len(content) > chunk_size:
+        if len(chunked_contents) == 0 or len(chunked_contents[-1] + content) > max_chara:
+            if len(content) > max_chara:
                 # チャンクサイズを超えた場合、チャンクサイズに収まるように分割する
-                chunked_code: List[str] = code_split(content, chunk_size)
+                chunked_code: List[str] = code_split(content, max_chara)
                 chunked_contents.extend(chunked_code)
             else:
                 # チャンクサイズを超えた場合、新しいチャンクを作成する
@@ -261,8 +261,8 @@ def count_tokens(text: str, model: str = 'gpt-4') -> int:
     return len(encoding.encode(text))
 
 
-def main(root_path: str, module_paths: List[str] = [], depth: int = sys.maxsize, no_comment: bool = False, chunk_size: int = sys.maxsize,
-         excludes: List[str] = []):
+def main(root_path: str, module_paths: List[str] = [], depth: int = sys.maxsize, no_comment: bool = False, max_chara: int = sys.maxsize,
+         max_token: int = sys.maxsize, excludes: List[str] = []):
     """指定されたファイルのパスのファイルの内容を取得する
 
     Args:
@@ -270,7 +270,7 @@ def main(root_path: str, module_paths: List[str] = [], depth: int = sys.maxsize,
         module_paths (List[str], optional): 起点となるファイルのパスからの相対パスのリスト. Defaults to [].
         depth (int, optional): 起点となるファイルのパスからの相対パスのリスト. Defaults to sys.maxsize.
         no_comment (bool, optional): コメントを除去するかどうか. Defaults to False.
-        chunk_size (int, optional): ファイルの内容を取得する際のチャンクサイズ. Defaults to sys.maxsize.
+        max_chara (int, optional): ファイルの内容を取得する際のチャンクサイズ. Defaults to sys.maxsize.
         excludes (List[str], optional): 除外するファイルのパスのリスト. Defaults to [].
 
     Returns:
@@ -286,7 +286,7 @@ def main(root_path: str, module_paths: List[str] = [], depth: int = sys.maxsize,
     searched_result_paths: List[str] = search_dependencies(root_path, module_paths, search_candidate_paths, depth)
 
     # 依存関係を解析したファイルのパスから、ファイルの内容を取得する
-    chunked_content: List[str] = create_content(searched_result_paths, chunk_size, no_comment)
+    chunked_content: List[str] = create_content(searched_result_paths, max_chara, no_comment)
     return chunked_content
 
 
@@ -302,16 +302,18 @@ if __name__ == "__main__":
     parser.add_argument('module_path', nargs='+', help='Path of the Python file from which to parse dependencies, multiple paths can be specified')
     parser.add_argument('-d', '--depth', type=int, default=sys.maxsize, help='Specify depth of dependency analysis')
     parser.add_argument('-n', '--no-comment', action='store_true', help='Omit document comments')
-    parser.add_argument('-c', '--chunk_size', type=int, default=sys.maxsize,
+    parser.add_argument('-mc', '--max_chara', type=int, default=sys.maxsize,
                         help='Split by a specified number of characters when copying to the clipboard')
+    parser.add_argument('-mt', '--max_token', type=int, default=sys.maxsize,
+                        help='Split by a specified number of tokens when copying to the clipboard')
     parser.add_argument('-e', '--exclude', nargs='*', default=[], help='Specify paths of files to exclude, multiple files can be specified')
     args = parser.parse_args()
 
     root_dir = os.getcwd()
 
     # メイン処理
-    chunked_content = main(root_dir, module_paths=args.module_path, depth=args.depth, no_comment=args.no_comment, chunk_size=args.chunk_size,
-                           excludes=args.exclude)
+    chunked_content = main(root_dir, module_paths=args.module_path, depth=args.depth, no_comment=args.no_comment, max_chara=args.max_chara,
+                           max_token=args.max_token, excludes=args.exclude)
 
     # 取得したコードと文字数やトークン数、chunkの数を表示する
     joined_content: str = ''.join(chunked_content)
@@ -319,7 +321,11 @@ if __name__ == "__main__":
     print(f'\n{len(joined_content)} characters.')
     print(f'\n{count_tokens(joined_content)} tokens encoded for gpt-4.')
     if len(chunked_content) > 1:
-        print(f'\n{len(chunked_content)} chunks of {args.chunk_size} characters.')
+        print(f'\n{len(chunked_content)} chunks.')
+        if args.max_chara < sys.maxsize:
+            print(f'    {args.max_chara} characters per chunk.')
+        if args.max_token < sys.maxsize:
+            print(f'    {args.max_token} tokens per chunk.')
 
     # chunked_content を順番にクリップボードにコピーする
     for content in chunked_content:

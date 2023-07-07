@@ -201,7 +201,7 @@ def code_split(code: str, max_chara: int = sys.maxsize, max_token: int = sys.max
         return [code]
 
     chunked_code: List[str] = ['']
-    split_last_message = '\n# The code was broken in the middle.\n```'
+    split_last_message = '\n```\n'
 
     # 文字列を改行で分割する
     splited_rows: List[str] = code.split('\n')

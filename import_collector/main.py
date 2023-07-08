@@ -7,7 +7,8 @@ import argparse
 import pyperclip
 import re
 import tiktoken
-from typing import List
+import logging
+from typing import List, Optional
 
 
 def read_file(path: str, remove_comments: bool = False) -> str:
@@ -151,6 +152,7 @@ def exclude_paths(all_py_paths: List[str], excludes: List[str] = []) -> List[str
         # 除外するファイルの相対パスが存在する場合、その要素を削除する
         if exclude in all_py_paths:
             all_py_paths.remove(exclude)
+
     return all_py_paths
 
 
@@ -163,10 +165,13 @@ def search_dependencies(root_path: str, module_paths: List[str], search_candidat
     for i in range(0, depth):
         # 次に探索するファイルのパスを格納するリスト追加する
         search_paths.append([])
+        # 現在の階層のログを出力する
+        logging.info(f"\nParsing depth: {current_depth}")
         # 現在の階層のファイルのパスを取得する
         for path in search_paths[current_depth]:
             # 現在の階層のファイルのパスが、探索済みのファイルのパスに含まれていない、かつ、探索候補のファイルのパスに含まれている場合
             if path not in searched_result_paths and path in search_candidate_paths:
+                logging.info(f"  {path}")
                 # 現在の階層のファイルのパスを探索済みのパスの先頭に追加する
                 searched_result_paths.insert(0, path)
                 # 現在の階層のファイルのパスから、依存関係を解析して、ファイルのパスを取得する。この時、絶対パスに変換する
@@ -294,6 +299,53 @@ def main(root_path: str, module_paths: List[str] = [], depth: int = sys.maxsize,
     return chunked_content
 
 
+# 取得したコードと文字数やトークン数、chunkの数を表示する
+def print_result(chunked_content: List[str], max_chara: int = sys.maxsize, max_token: int = sys.maxsize) -> None:
+    """
+    取得したコードと文字数やトークン数、chunkの数を表示する
+
+    Args:
+        chunked_content (List[str]): 取得したコードのリスト
+        max_chara (int, optional): ファイルの内容を取得する際のチャンクサイズ. Defaults to sys.maxsize.
+        max_token (int, optional): ファイルの内容を取得する際のチャンクサイズ. Defaults to sys.maxsize.
+
+    Returns:
+        None
+    """
+    joined_content: str = ''.join(chunked_content)
+    print('\n== Result ==')
+    print(f'total characters: {len(joined_content)}')
+    print(f'total tokens:     {count_tokens(joined_content)} (encoded for gpt-4)')
+    if len(chunked_content) > 1:
+        print(f'\n{len(chunked_content)} chunks.')
+        if max_chara < sys.maxsize:
+            print(f'  ({max_chara} characters per chunk.)')
+        if max_token < sys.maxsize:
+            print(f'  ({max_token} tokens per chunk.)')
+
+
+# chunked_content を順番にクリップボードにコピーする
+def copy_to_clipboard(chunked_content: List[str]):
+    """
+    chunked_content を順番にクリップボードにコピーする
+
+    Args:
+        chunked_content (List[str]): コピーする内容のリスト
+
+    Returns:
+        None
+    """
+    for content in chunked_content:
+        pyperclip.copy(content)
+        # chunkのナンバーを表示する
+        print(f'\nChunk {chunked_content.index(content) + 1} of {len(chunked_content)} copied to clipboard.')
+        # 文字数とトークン数を表示する
+        print(f'  ({len(content)} chara, {count_tokens(content)} tokens)')
+        # chunkが最後のchunkでない場合、Enterキーを押すまで待機する
+        if chunked_content.index(content) + 1 < len(chunked_content):
+            input('\nPress Enter to continue...')
+
+
 if __name__ == "__main__":
     # コマンドライン引数の解析
     parser = argparse.ArgumentParser(
@@ -315,29 +367,14 @@ if __name__ == "__main__":
 
     root_dir = os.getcwd()
 
+    logging.basicConfig(level=logging.INFO, format='%(message)s')
+
     # メイン処理
     chunked_content = main(root_dir, module_paths=args.module_path, depth=args.depth, no_comment=args.no_comment, max_chara=args.max_chara,
                            max_token=args.max_token, excludes=args.exclude)
 
     # 取得したコードと文字数やトークン数、chunkの数を表示する
-    joined_content: str = ''.join(chunked_content)
-    print(joined_content)
-    print(f'{len(joined_content)} characters.')
-    print(f'{count_tokens(joined_content)} tokens (encoded for gpt-4).')
-    if len(chunked_content) > 1:
-        print(f'\n{len(chunked_content)} chunks.')
-        if args.max_chara < sys.maxsize:
-            print(f'    {args.max_chara} characters per chunk.')
-        if args.max_token < sys.maxsize:
-            print(f'    {args.max_token} tokens per chunk.')
+    print_result(chunked_content, max_chara=args.max_chara, max_token=args.max_token)
 
     # chunked_content を順番にクリップボードにコピーする
-    for content in chunked_content:
-        pyperclip.copy(content)
-        # chunkのナンバーを表示する
-        print(f'\nChunk {chunked_content.index(content) + 1} of {len(chunked_content)} copied to clipboard.')
-        # 文字数とトークン数を表示する
-        print(f'({len(content)} chara, {count_tokens(content)} tokens)')
-        # chunkが最後のchunkでない場合、Enterキーを押すまで待機する
-        if chunked_content.index(content) + 1 < len(chunked_content):
-            input('\nPress Enter to continue...')
+    copy_to_clipboard(chunked_content)

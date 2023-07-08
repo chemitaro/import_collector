@@ -161,12 +161,13 @@ def search_dependencies(root_path: str, module_paths: List[str], search_candidat
     search_paths: List[List[str]] = [module_paths]
     searched_result_paths: List[str] = []
     current_depth: int = 0  # 探索中の階層の深さを0で初期化
+    logging.info(f'\n== Parsing module dependencies ==')
     # 指定された深さまで依存関係を解析する
     for i in range(0, depth):
         # 次に探索するファイルのパスを格納するリスト追加する
         search_paths.append([])
         # 現在の階層のログを出力する
-        logging.info(f"\nParsing depth: {current_depth}")
+        logging.info(f"\nDepth: {current_depth}")
         # 現在の階層のファイルのパスを取得する
         for path in search_paths[current_depth]:
             # 現在の階層のファイルのパスが、探索済みのファイルのパスに含まれていない、かつ、探索候補のファイルのパスに含まれている場合
@@ -237,20 +238,27 @@ def create_content(searched_result_paths: List[str] = [], max_chara: int = sys.m
     """
 
     chunked_contents: List[str] = []
+    logging.info('\n== Store file in Chunk ==')
     for relative_path in searched_result_paths:
         code = read_file(relative_path, no_comment)
         content = f'\n```\n# {relative_path}\n{code}\n```\n'
         if len(chunked_contents) == 0 or len(chunked_contents[-1] + content) > max_chara or count_tokens(chunked_contents[-1] + content) > max_token:
             if len(content) > max_chara or count_tokens(content) > max_token:
                 # チャンクサイズを超えた場合、チャンクサイズに収まるように分割する
-                chunked_code: List[str] = code_split(content, max_chara, max_token)
-                chunked_contents.extend(chunked_code)
+                chunked_codes: List[str] = code_split(content, max_chara, max_token)
+                for chunked_code in chunked_codes:
+                    chunked_contents.append(chunked_code)
+                    logging.info(f'\nChunk {len(chunked_contents)}')
+                    logging.info(f'  {relative_path}(split)')
             else:
                 # チャンクサイズを超えた場合、新しいチャンクを作成する
                 chunked_contents.append(content)
+                logging.info(f'\nChunk {len(chunked_contents)}')
+                logging.info(f'  {relative_path}')
         else:
             # チャンクサイズを超えない場合、現在のチャンクに追加する
             chunked_contents[-1] += content
+            logging.info(f'  {relative_path}')
     return chunked_contents
 
 
@@ -285,6 +293,30 @@ def main(root_path: str, module_paths: List[str] = [], depth: int = sys.maxsize,
     Returns:
         List[str]: 指定されたファイルのパスのファイルの内容のリスト
     """
+
+    # 引数の検証
+    if type(root_path) is not str:
+        raise TypeError('root_path must be str')
+    if type(module_paths) is not list:
+        raise TypeError('module_paths must be list')
+    if type(depth) is not int:
+        raise TypeError('depth must be int')
+    # depthは0以上の整数でなければならない
+    if depth < 0:
+        raise ValueError('depth must be positive')
+    if type(no_comment) is not bool:
+        raise TypeError('no_comment must be bool')
+    if type(max_chara) is not int:
+        raise TypeError('max_chara must be int')
+    if max_chara < 1:
+        raise ValueError('max_chara must be positive')
+    if type(max_token) is not int:
+        raise TypeError('max_token must be int')
+    if max_token < 1:
+        raise ValueError('max_token must be positive')
+    if type(excludes) is not list:
+        raise TypeError('excludes must be list')
+
     # ルートディレクトリ以下の全Pythonファイルのパスを取得する
     all_py_paths: List[str] = get_all_py_paths(root_path)
 
@@ -313,11 +345,11 @@ def print_result(chunked_content: List[str], max_chara: int = sys.maxsize, max_t
         None
     """
     joined_content: str = ''.join(chunked_content)
-    print('\n== Result ==')
+    print('\n== Result ==\n')
     print(f'total characters: {len(joined_content)}')
     print(f'total tokens:     {count_tokens(joined_content)} (encoded for gpt-4)')
     if len(chunked_content) > 1:
-        print(f'\n{len(chunked_content)} chunks.')
+        print(f'total chanks:     {len(chunked_content)}')
         if max_chara < sys.maxsize:
             print(f'  ({max_chara} characters per chunk.)')
         if max_token < sys.maxsize:
@@ -335,6 +367,7 @@ def copy_to_clipboard(chunked_content: List[str]):
     Returns:
         None
     """
+    print('\n== Copy to clipboard ==')
     for content in chunked_content:
         pyperclip.copy(content)
         # chunkのナンバーを表示する

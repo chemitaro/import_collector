@@ -8,7 +8,7 @@ import pyperclip
 import re
 import tiktoken
 import logging
-from typing import List, Optional
+from typing import List
 
 
 def read_file(path: str, remove_comments: bool = False) -> str:
@@ -161,7 +161,7 @@ def search_dependencies(root_path: str, module_paths: List[str], search_candidat
     search_paths: List[List[str]] = [module_paths]
     searched_result_paths: List[str] = []
     current_depth: int = 0  # 探索中の階層の深さを0で初期化
-    logging.info(f'\n== Parsing module dependencies ==')
+    logging.info('\n== Parsing module dependencies ==')
     # 指定された深さまで依存関係を解析する
     for i in range(0, depth):
         # 次に探索するファイルのパスを格納するリスト追加する
@@ -349,7 +349,7 @@ def print_result(chunked_content: List[str], max_chara: int = sys.maxsize, max_t
     print(f'total characters: {len(joined_content)}')
     print(f'total tokens:     {count_tokens(joined_content)} (encoded for gpt-4)')
     if len(chunked_content) > 1:
-        print(f'total chanks:     {len(chunked_content)}')
+        print(f'total chunks:     {len(chunked_content)}')
         if max_chara < sys.maxsize:
             print(f'  ({max_chara} characters per chunk.)')
         if max_token < sys.maxsize:

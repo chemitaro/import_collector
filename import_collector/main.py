@@ -170,15 +170,21 @@ def search_dependencies(root_path: str, module_paths: List[str], search_candidat
         logging.info(f"\nDepth: {current_depth}")
         # 現在の階層のファイルのパスを取得する
         for path in search_paths[current_depth]:
-            # 現在の階層のファイルのパスが、探索済みのファイルのパスに含まれていない、かつ、探索候補のファイルのパスに含まれている場合
-            if path not in searched_result_paths and path in search_candidate_paths:
-                logging.info(f"  {path}")
-                # 現在の階層のファイルのパスを探索済みのパスの先頭に追加する
-                searched_result_paths.insert(0, path)
-                # 現在の階層のファイルのパスから、依存関係を解析して、ファイルのパスを取得する。この時、絶対パスに変換する
-                dependencies: List[str] = extract_imports(root_path, path)
-                # 現在の階層のファイルのパスの依存関係を、次の階層のファイルのパスに追加する
-                search_paths[current_depth + 1].extend(dependencies)
+            # 現在の階層のファイルのパスが探索済みのパスに含まれている場合、次のファイルのパスを探索する
+            if path in searched_result_paths or path not in search_candidate_paths:
+                continue
+
+            logging.info(f"  {path}")
+            # 現在の階層のファイルのパスを探索済みのパスの先頭に追加する
+            searched_result_paths.insert(0, path)
+            # 現在の階層のファイルのパスから、依存関係を解析して、ファイルのパスを取得する。この時、絶対パスに変換する
+            dependencies: List[str] = extract_imports(root_path, path)
+            # 現在の階層のファイルのパスの依存関係のうち、探索済みのファイルのパスに含まれていない、かつ、探索候補のファイルのパスに含まれている場合は、次の階層のファイルのパスに追加する
+            for dependency in dependencies:
+                if dependency in searched_result_paths or dependency not in search_candidate_paths:
+                    continue
+
+                search_paths[current_depth + 1].append(dependency)
         current_depth += 1  # 次の階層に移動する
         # 次の階層のファイルのパスが存在しない場合、探索を終了する
         if len(search_paths[current_depth]) == 0:

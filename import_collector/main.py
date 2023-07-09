@@ -3,6 +3,9 @@
 import os
 import sys
 import ast
+import importlib.util
+import pkgutil
+import inspect
 import argparse
 import pyperclip
 import re
@@ -47,26 +50,55 @@ def remove_docstring(content):
     return omit_content
 
 
-def convert_relative_import(file, module):
+def is_package(module_name):
     """
-    相対インポートを絶対インポートに変換します。
+    指定されたモジュールがパッケージであるかどうかを返します。
 
     Args:
-        file (str): 相対インポートを含むPythonファイルのパス。
-        module (str): 相対インポートを含むモジュールの名前。
+        module_name (str): モジュール名。
 
     Returns:
-        str: 相対インポートが絶対インポートに変換されたモジュールの名前。
+        bool: パッケージであるかどうかを示すブール値。
     """
-    # モジュールの名前から階層を取得する
-    levels = module.count('.')
-    # ファイルのパスからディレクトリを取得する
-    directory = os.path.dirname(file)
-    # 階層の数だけディレクトリを上に上がる
-    for _ in range(levels):
-        directory = os.path.dirname(directory)
-    # ディレクトリと階層から絶対インポートに変換する
-    return '.'.join([directory] + [module])
+    try:
+        spec = importlib.util.find_spec(module_name)
+    except (AttributeError, ModuleNotFoundError):
+        return False
+    return spec is not None and spec.submodule_search_locations is not None
+
+
+def get_modules_in_package(package_name: str) -> List[str]:
+    """
+    指定されたパッケージに含まれるモジュールの名前のリストを返します。
+
+    Args:
+        package_name (str): パッケージ名。
+
+    Returns:
+        List[str]: パッケージに含まれるモジュールの名前のリスト。
+    """
+    return [name for _, name, _ in pkgutil.iter_modules([package_name])]
+
+
+def get_module_if_contains(package_name: str, target_class_or_func: str) -> List[str]:
+    """
+    指定されたパッケージに含まれるモジュールのうち、指定されたクラスまたは関数を含むモジュールの名前のリストを返します。
+
+    Args:
+        package_name (str): パッケージ名。
+        target_class_or_func (str): 検索するクラスまたは関数の名前。
+
+    Returns:
+        List[str]: 指定されたクラスまたは関数を含むモジュールの名前のリスト。
+    """
+    modules = []
+    for _, module_name, _ in pkgutil.iter_modules([package_name]):
+        module = importlib.import_module(f"{package_name}.{module_name}")
+        for name, _ in inspect.getmembers(module):
+            if name == target_class_or_func:
+                modules.append(module.__name__)
+                break
+    return modules
 
 
 def extract_imports(root_path: str, relative_path: str) -> List[str]:
@@ -91,6 +123,8 @@ def extract_imports(root_path: str, relative_path: str) -> List[str]:
 
     # モジュールのインポートをファイルパスに変換する
     absolute_paths = []
+
+    # モジュール名を取得する
     for node in imports:
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -98,15 +132,18 @@ def extract_imports(root_path: str, relative_path: str) -> List[str]:
         elif isinstance(node, ast.ImportFrom):
             module_name = node.module
 
+        # 相対インポートの場合は、絶対インポートに変換する
         if isinstance(node, ast.ImportFrom) and node.level > 0:
-            # Relative import
             base_dir = os.path.dirname(absolute_path)
             for _ in range(node.level - 1):
                 base_dir = os.path.dirname(base_dir)
-            module_file_path = os.path.join(base_dir, module_name.replace(".", "/")) + ".py"
-        elif module_name is not None:
-            # Absolute import
-            module_file_path = os.path.join(root_dir, module_name.replace(".", "/")) + ".py"
+
+            # root_pathとbase_dirの共通部分を削除するし、相対パスに変換する
+            package_relative_name = os.path.relpath(base_dir, root_path).replace("/", ".")
+            # モジュール名を結合する
+            module_name = f"{package_relative_name}.{module_name}"
+
+        module_file_path = os.path.join(root_dir, module_name.replace(".", "/")) + ".py"
         absolute_paths.append(module_file_path)
     # 絶対パスを相対パスに変換する
     relative_paths = [os.path.relpath(absolute_path, root_path) for absolute_path in absolute_paths]

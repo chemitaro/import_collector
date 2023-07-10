@@ -181,45 +181,6 @@ def code_split(code: str, max_chara: int = sys.maxsize, max_token: int = sys.max
     return chunked_code
 
 
-def create_content(searched_result_paths: List[str] = [], max_chara: int = sys.maxsize, max_token: int = sys.maxsize,
-                   no_comment: bool = False) -> List[str]:
-    """指定されたファイルのパスのファイルの内容を取得する
-
-    Args:
-        searched_result_paths (List[str], optional): 指定されたファイルのパスのリスト. Defaults to [].
-        max_chara (int, optional): ファイルの内容を取得する際のチャンクサイズ. Defaults to sys.maxsize.
-        max_token (int, optional): ファイルの内容を取得する際のトークン数. Defaults to sys.maxsize.
-        no_comment (bool, optional): コメントを除去するかどうか. Defaults to False.
-
-    Returns:
-        List[str]: 指定されたファイルのパスのファイルの内容のリスト
-    """
-
-    chunked_contents: List[str] = []
-    logging.info('\n== Store file in Chunk ==')
-    for relative_path in searched_result_paths:
-        code = read_file(relative_path, no_comment)
-        content = f'\n```\n# {relative_path}\n{code}\n```\n'
-        if len(chunked_contents) == 0 or len(chunked_contents[-1] + content) > max_chara or count_tokens(chunked_contents[-1] + content) > max_token:
-            if len(content) > max_chara or count_tokens(content) > max_token:
-                # チャンクサイズを超えた場合、チャンクサイズに収まるように分割する
-                chunked_codes: List[str] = code_split(content, max_chara, max_token)
-                for chunked_code in chunked_codes:
-                    chunked_contents.append(chunked_code)
-                    logging.info(f'\nChunk {len(chunked_contents)}')
-                    logging.info(f'  {relative_path}(split)')
-            else:
-                # チャンクサイズを超えた場合、新しいチャンクを作成する
-                chunked_contents.append(content)
-                logging.info(f'\nChunk {len(chunked_contents)}')
-                logging.info(f'  {relative_path}')
-        else:
-            # チャンクサイズを超えない場合、現在のチャンクに追加する
-            chunked_contents[-1] += content
-            logging.info(f'  {relative_path}')
-    return chunked_contents
-
-
 # 受け取ったテキストのトークン数を返す
 def count_tokens(text: str, model: str = 'gpt-4') -> int:
     """
@@ -338,6 +299,52 @@ class DependenciesSearcher():
         return relative_paths
 
 
+class ContentCreator():
+    def __init__(self, searched_result_paths: List[str] = [], max_chara: int = sys.maxsize, max_token: int = sys.maxsize,
+                 no_comment: bool = False):
+        self.searched_result_paths = searched_result_paths
+        self.max_chara = max_chara
+        self.max_token = max_token
+        self.no_comment = no_comment
+
+    def create_content(self) -> List[str]:
+        """指定されたファイルのパスのファイルの内容を取得する
+
+        Args:
+            searched_result_paths (List[str], optional): 指定されたファイルのパスのリスト. Defaults to [].
+            max_chara (int, optional): ファイルの内容を取得する際のチャンクサイズ. Defaults to sys.maxsize.
+            max_token (int, optional): ファイルの内容を取得する際のトークン数. Defaults to sys.maxsize.
+            no_comment (bool, optional): コメントを除去するかどうか. Defaults to False.
+
+        Returns:
+            List[str]: 指定されたファイルのパスのファイルの内容のリスト
+        """
+
+        chunked_contents: List[str] = []
+        logging.info('\n== Store file in Chunk ==')
+        for relative_path in self.searched_result_paths:
+            code = read_file(relative_path, self.no_comment)
+            content = f'\n```\n# {relative_path}\n{code}\n```\n'
+            if len(chunked_contents) == 0 or len(chunked_contents[-1] + content) > self.max_chara or count_tokens(chunked_contents[-1] + content) > self.max_token:
+                if len(content) > self.max_chara or count_tokens(content) > self.max_token:
+                    # チャンクサイズを超えた場合、チャンクサイズに収まるように分割する
+                    chunked_codes: List[str] = code_split(content, self.max_chara, self.max_token)
+                    for chunked_code in chunked_codes:
+                        chunked_contents.append(chunked_code)
+                        logging.info(f'\nChunk {len(chunked_contents)}')
+                        logging.info(f'  {relative_path}(split)')
+                else:
+                    # チャンクサイズを超えた場合、新しいチャンクを作成する
+                    chunked_contents.append(content)
+                    logging.info(f'\nChunk {len(chunked_contents)}')
+                    logging.info(f'  {relative_path}')
+            else:
+                # チャンクサイズを超えない場合、現在のチャンクに追加する
+                chunked_contents[-1] += content
+                logging.info(f'  {relative_path}')
+        return chunked_contents
+
+
 def main(root_path: str, module_paths: List[str] = [], depth: int = sys.maxsize, no_comment: bool = False, max_chara: int = sys.maxsize,
          max_token: int = sys.maxsize, excludes: List[str] = []):
     """指定されたファイルのパスのファイルの内容を取得する
@@ -388,7 +395,8 @@ def main(root_path: str, module_paths: List[str] = [], depth: int = sys.maxsize,
     searched_result_paths: List[str] = searcher.search_dependencies()
 
     # 依存関係を解析したファイルのパスから、ファイルの内容を取得する
-    chunked_content: List[str] = create_content(searched_result_paths, max_chara, max_token, no_comment)
+    creator = ContentCreator(searched_result_paths, max_chara, max_token, no_comment)
+    chunked_content: List[str] = creator.create_content()
     return chunked_content
 
 

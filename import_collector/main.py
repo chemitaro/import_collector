@@ -211,7 +211,7 @@ class DependenciesSearcher():
         current_depth: int = 0  # 探索中の階層の深さを0で初期化
         logging.info('\n== Parsing module dependencies ==')
         # 指定された深さまで依存関係を解析する
-        for i in range(0, self.depth):
+        for i in range(0, self.depth + 1):
             # 次に探索するファイルのパスを格納するリスト追加する
             search_paths.append([])
             # 現在の階層のログを出力する
@@ -310,12 +310,6 @@ class ContentCreator():
     def create_content(self) -> List[str]:
         """指定されたファイルのパスのファイルの内容を取得する
 
-        Args:
-            searched_result_paths (List[str], optional): 指定されたファイルのパスのリスト. Defaults to [].
-            max_chara (int, optional): ファイルの内容を取得する際のチャンクサイズ. Defaults to sys.maxsize.
-            max_token (int, optional): ファイルの内容を取得する際のトークン数. Defaults to sys.maxsize.
-            no_comment (bool, optional): コメントを除去するかどうか. Defaults to False.
-
         Returns:
             List[str]: 指定されたファイルのパスのファイルの内容のリスト
         """
@@ -397,6 +391,7 @@ def main(root_path: str, module_paths: List[str] = [], depth: int = sys.maxsize,
     # 依存関係を解析したファイルのパスから、ファイルの内容を取得する
     creator = ContentCreator(searched_result_paths, max_chara, max_token, no_comment)
     chunked_content: List[str] = creator.create_content()
+
     return chunked_content
 
 

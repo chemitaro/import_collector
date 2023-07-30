@@ -424,8 +424,10 @@ def print_result(chunked_content: List[str], max_chara: int = sys.maxsize, max_t
         None
     """
     joined_content: str = ''.join(chunked_content)
+    lines = joined_content.split('\n')
     print('\n== Result ==\n')
     print(f'total characters: {len(joined_content)}')
+    print(f'total lines:      {len(lines)}')
     print(f'total tokens:     {count_tokens(joined_content)} (encoded for gpt-4)')
     if len(chunked_content) > 1:
         print(f'total chunks:     {len(chunked_content)}')

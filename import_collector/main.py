@@ -253,7 +253,7 @@ class DependenciesSearcher():
         """
         # ファイルの内容を読み込む
         code = read_file(relative_path, remove_comments=False)
-        absolute_path = os.path.join(self.root_path, relative_path)
+        absolute_path = self.absolute_path(relative_path)
         # コードをASTで解析する
         tree = ast.parse(code)
 
@@ -298,6 +298,21 @@ class DependenciesSearcher():
             relative_paths.append(relative_path)
         return relative_paths
 
+    def absolute_path(self, relative_path: str) -> str:
+        """相対パスを絶対パスに変換する
+
+        Args:
+            relative_path (str): 相対パス
+
+        Returns:
+            str: 絶対パス
+        """
+        absolute_path = os.path.join(self.root_path, relative_path)
+        # ファイルが存在しない場合は、空文字を返す
+        if not os.path.exists(absolute_path):
+            return ""
+        return absolute_path
+
 
 class ContentCreator():
     def __init__(self, searched_result_paths: List[str] = [], max_chara: int = sys.maxsize, max_token: int = sys.maxsize,
@@ -318,7 +333,7 @@ class ContentCreator():
         logging.info('\n== Store file in Chunk ==')
         for relative_path in self.searched_result_paths:
             code = read_file(relative_path, self.no_comment)
-            content = f'\n```\n# {relative_path}\n{code}\n```\n'
+            content = f'\n### {relative_path}\n```\n{code}\n```\n'
             if len(chunked_contents) == 0 or len(chunked_contents[-1] + content) > self.max_chara or count_tokens(chunked_contents[-1] + content) > self.max_token:
                 if len(content) > self.max_chara or count_tokens(content) > self.max_token:
                     # チャンクサイズを超えた場合、チャンクサイズに収まるように分割する

@@ -472,9 +472,9 @@ if __name__ == "__main__":
     parser.add_argument('module_path', nargs='+', help='Path of the Python file from which to parse dependencies, multiple paths can be specified')
     parser.add_argument('-d', '--depth', type=int, default=999, help='Specify depth of dependency analysis')
     parser.add_argument('-n', '--no-comment', action='store_true', help='Omit document comments')
-    parser.add_argument('-mc', '--max_chara', type=int, default=15000,
+    parser.add_argument('-mc', '--max_chara', type=int, default=3000000,
                         help='Split by a specified number of characters when copying to the clipboard')
-    parser.add_argument('-mt', '--max_token', type=int, default=3000,
+    parser.add_argument('-mt', '--max_token', type=int, default=120000,
                         help='Split by a specified number of tokens when copying to the clipboard')
     parser.add_argument('-e', '--exclude', nargs='*', default=[], help='Specify paths of files to exclude, multiple files can be specified')
     args = parser.parse_args()
